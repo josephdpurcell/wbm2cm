@@ -1,0 +1,15 @@
+wbm2cm.overview:
+  path: '/admin/structure/migrate-wbm-to-cm'
+  defaults:
+    _form: '\Drupal\wbm2cm\Form\MigrateForm'
+    _title: 'Migrate WBM to CM'
+  requirements:
+    _permission: 'administer moderation states'
+
+wbm2cm.migrate:
+  path: '/admin/structure/migrate-wbm-to-cm/migrate'
+  defaults:
+    _controller: '\Drupal\wbm2cm\Controller\MigrateBatchController::migrate'
+    _title: 'Migrate WBM to CM'
+  requirements:
+    _permission: 'administer content'

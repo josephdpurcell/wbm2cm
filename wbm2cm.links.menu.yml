@@ -1,0 +1,5 @@
+wbm2cm.overview:
+  title: 'Migrate WBM to CM'
+  route_name: wbm2cm.overview
+  description: 'Migrate Workbench Moderation to Content Moderation.'
+  parent: system.admin_config_workflow
