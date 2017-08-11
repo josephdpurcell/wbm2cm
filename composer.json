@@ -1,0 +1,14 @@
+{
+  "name": "josephdpurcell/wbm2cm",
+  "type": "drupal-module",
+  "description": "Migrates from Drupal 8.4 Workbench Moderation to Content Moderation.",
+  "keywords": ["Drupal"],
+  "license": "GPL-2.0+",
+  "homepage": "https://github.com/josephdpurcell/wbm2cm",
+  "minimum-stability": "dev",
+  "support": {
+    "issues": "https://github.com/josephdpurcell/wbm2cm/issues",
+    "source": "https://github.com/josephdpurcell/wbm2cm.git"
+  },
+  "require": { }
+}
