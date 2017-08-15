@@ -5,7 +5,9 @@ namespace Drupal\wbm2cm;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Extension\ModuleInstallerInterface;
+use Drupal\Core\KeyValueStore\KeyValueFactoryInterface;
 use Drupal\workflows\Entity\Workflow;
+use Psr\Log\LoggerInterface;
 
 /**
  * Manages migrating from WBM to CM.
@@ -34,6 +36,20 @@ class MigrateManager {
   protected $moduleInstaller;
 
   /**
+   * The key value store for the wbm2cm module.
+   *
+   * @var \Drupal\Core\KeyValueStore\KeyValueStoreInterface
+   */
+  protected $keyValueStore;
+
+  /**
+   * Logger service.
+   *
+   * @var \Drupal\Core\Logger\LoggerChannelInterface
+   */
+  protected $logger;
+
+  /**
    * Instantiate the MigrateManager service.
    *
    * @param \Drupal\Core\Config\ConfigFactoryInterface $config_factory
@@ -42,11 +58,17 @@ class MigrateManager {
    *   The entity type manager.
    * @param \Drupal\Core\Extension\ModuleInstallerInterface $module_installer
    *   The module installer.
+   * @param \Drupal\Core\KeyValueStore\KeyValueFactoryInterface $key_value_factory
+   *   The key value store factory.
+   * @param \Psr\Log\LoggerInterface $logger
+   *   A logger instance.
    */
-  public function __construct(ConfigFactoryInterface $config_factory, EntityTypeManagerInterface $entity_type_manager, ModuleInstallerInterface $module_installer) {
+  public function __construct(ConfigFactoryInterface $config_factory, EntityTypeManagerInterface $entity_type_manager, ModuleInstallerInterface $module_installer, KeyValueFactoryInterface $key_value_factory, LoggerInterface $logger) {
     $this->configFactory = $config_factory;
     $this->entityTypeManager = $entity_type_manager;
     $this->moduleInstaller = $module_installer;
+    $this->keyValueStore = $key_value_factory->get('wbm2cm');
+    $this->logger = $logger;
   }
 
   /**
@@ -85,12 +107,15 @@ class MigrateManager {
   }
 
   // @todo use key value store
-  protected $states;
   protected function setModerationStateMap(array $states) {
-    $this->states = $states;
+    $this->keyValueStore->set('serialized_state_map', $states);
   }
+
+  /**
+   * Get the state map 
+   */
   protected function getModerationStateMap() {
-    return $this->states;
+    return $this->keyValueStore->get('serialized_state_map');
   }
 
   /**
@@ -104,40 +129,42 @@ class MigrateManager {
 
     // Collect all states.
     $states = [];
-#    error_log("Collecting moderation state IDs:");
     foreach ($this->configFactory->listAll('workbench_moderation.moderation_state.') as $state_ids) {
-#      error_log("    $state_ids");
       $state = $this->configFactory->getEditable($state_ids);
       $states[] = $state->get();
     }
-#    error_log("\n");
 
-#    error_log(print_r($states,1));
+    $this->logger->info('Found Workbench Moderation states: %state_ids', [
+      '%state_ids' => print_r($states, 1),
+    ]);
 
     // Collect all transitions.
     $transitions = [];
-#    error_log("Collecting state transition IDs:");
     foreach ($this->configFactory->listAll('workbench_moderation.moderation_state_transition.') as $transition_ids) {
-#      error_log("    $transition_ids");
       $transition = $this->configFactory->getEditable($transition_ids);
       $transitions[] = $transition->get();
     }
-#    error_log("\n");
 
-#    error_log(print_r($transitions,1));
+    $this->logger->info('Found Workbench Moderation transitions: %transition_ids', [
+      '%transition_ids' => print_r($transitions, 1),
+    ]);
 
     // Collect all moderated bundles.
     // @todo consider leveraging WBM to get the list of enabled bundles?
     $enabled_bundles = [];
-#    error_log("Get bundles that were Workbench Moderated:");
     foreach ($this->configFactory->listAll() as $bundle_config_id) {
       $bundle_config = $this->configFactory->getEditable($bundle_config_id);
       if (!$third_party_settings = $bundle_config->get('third_party_settings')) {
+        $this->logger->debug('Skipping entity bundle that is not moderated: %bundle_id', [
+          '%bundle_id' => $bundle_config_id,
+        ]);
         continue;
       }
       $third_party_settings_updated = array_diff_key($third_party_settings, array_flip(['workbench_moderation']));
       if (count($third_party_settings) !== count($third_party_settings_updated)) {
-#        error_log("  HIT: {$bundle_config_id}");
+        $this->logger->debug('Found Workbench Moderation bundle that is moderated: %bundle_id', [
+          '%bundle_id' => $bundle_config_id,
+        ]);
         // Collect which entity types and bundles have moderation enabled.
         list($entity_provider, $bundle_config_prefix, $bundle_id) = explode('.', $bundle_config_id);
         $entity_type_id = FALSE;
@@ -147,28 +174,30 @@ class MigrateManager {
             break;
           }
         }
+        // @todo cleanup and clarify what error state we are dealing with
         if (!$entity_type_id) {
           throw new \Exception('Something went wrong.');
         }
         $enabled_bundles[$entity_type_id][] = $bundle_id;
       }
       else {
-#        error_log("  PASS: {$bundle_config_id}");
+        $this->logger->debug('Skipping Workbench Moderation bundle that is moderated, but is incorrect format? %bundle_id', [
+          '%bundle_id' => $bundle_config_id,
+        ]);
       }
     }
-#    error_log("\n");
 
     // Collect entity state map and remove Workbench moderation_state field from
     // enabled bundles.
     $state_map = [];
-#    error_log("Remove Workbench moderation_state field from enabled bundles:");
     foreach ($enabled_bundles as $entity_type_id=> $bundles) {
       $state_map[$entity_type_id] = [];
-#      error_log("    {$entity_type_id}:");
       foreach ($bundles as $bundle) {
         $state_map[$entity_type_id][$bundle] = [];
         $entity_storage = $this->entityTypeManager->getStorage($entity_type_id);
-#        error_log("        Querying all {$bundle} revisions...");
+        $this->logger->debug('Querying for all %bundle_id revisions...', [
+          '%bundle_id' => $bundle,
+        ]);
         $entity_revisions = \Drupal::entityQuery($entity_type_id)
           ->condition('type', $bundle)
           ->allRevisions()
@@ -177,19 +206,24 @@ class MigrateManager {
         foreach ($entity_revisions as $revision_id => $id) {
           $entity = $entity_storage->loadRevision($revision_id);
           $state_map[$entity_type_id][$bundle][$revision_id] = $entity->moderation_state->target_id;
-#          error_log("        id:{$id}, revision:{$revision_id} - setting moderation_state of {$entity->moderation_state->target_id} to NULL");
+// @joe comment out these lines
+          /* Uncomment these lines for extremely verbose debugging. This is not recommended on large data sets. */
+          $this->logger->debug('Setting Workbench Moderation state field on id:%id, revision:%revision_id from %state to NULL', [
+            '%id' => $id,
+            '%revision_id' => $revision_id,
+            '%state' => $entity->moderation_state->target_id,
+          ]);
           $entity->moderation_state = NULL;
           $entity->save();
         }
       }
     }
-#    error_log("\n");
+    $this->logger->notice('Workbench Moderation states have been removed from all entities and temporarily stored in key value storage.');
     $this->setModerationStateMap($state_map);
 
     // Uninstall Workbench Moderation, but not its dependencies.
-#    error_log("Uninstalling workbench_moderation module.");
     $this->moduleInstaller->uninstall(['workbench_moderation'], FALSE);
-#    error_log("\n");
+    $this->logger->notice('Workbench Moderation module is uninstalled.');
 
     // -----------------------------------------------------------------------------
     // Part II. Use collected info to enable Content Moderation.
@@ -198,14 +232,14 @@ class MigrateManager {
     // Install Workflows module.
     // Note: this will trigger Workbench Moderation to not be "active" so that it
     // can be disabled without database integrity errors.
-#    error_log("Installing workflows module");
     $this->moduleInstaller->install(['workflows']);
-#    error_log("Installing content_moderation module");
+    $this->logger->notice('Workflows module is installed.');
     $this->moduleInstaller->install(['content_moderation']);
-#    error_log("\n");
+    $this->logger->notice('Content Moderation module is installed.');
 
     // Create and save a workflow entity with the information gathered.
     // Note: this implies all entities will be squished into a single workflow.
+    // @todo figure out how to use classes to add states and transitions instead of an array
     $workflow_config = [
       'id' => 'content_moderation_workflow',
       'label' => 'Content Moderation Workflow',
@@ -215,47 +249,42 @@ class MigrateManager {
         'transitions' => [],
       ],
     ];
-#    error_log("Add states to Workflow:");
     foreach ($states as $state) {
-#      error_log("    {$state['id']}:{$state['label']}");
-      //$workflow->addState($state['id'], $state['label']);
-      //$workflow_type_plugin->addState($state['id'], $state['label']);
       $workflow_config['type_settings']['states'][$state['id']] = [
         'label' => $state['label'],
         'published' => $state['published'],
         'default_revision' => $state['default_revision'],
       ];
     }
-#    error_log("\n");
 
-#    error_log("Add transitions to Workflow:");
     foreach ($transitions as $transition) {
-#      error_log("    {$transition['id']}:{$transition['label']}    [{$transition['stateFrom']}] -> {$transition['stateTo']}");
       $workflow_config['type_settings']['transitions'][$transition['id']] = [
         'label' => $transition['label'],
         'to' => $transition['stateTo'],
         'from' => explode(',', $transition['stateFrom']),
       ];
     }
-#    error_log("\n");
 
     // Instantiate the workflow from the config.
+    $this->logger->info('Create workflow from config: %config', [
+      '%config' => print_r($workflow_config, 1),
+    ]);
     $workflow = new Workflow($workflow_config, 'workflow');
     $workflow_type_plugin = $workflow->getTypePlugin();
 
     // Add Content Moderation moderation to bundles that were Workbench Moderation moderated.
-#    error_log("Enable Content Moderation on bundles:");
     foreach ($enabled_bundles as $entity_type_id=> $bundles) {
       foreach ($bundles as $bundle) {
         $workflow->getTypePlugin()->addEntityTypeAndBundle($entity_type_id, $bundle);
-#        error_log("    Enabling Content Moderation on {$bundle}");
+        $this->logger->notice('Setting Content Moderation to be enabled on %bundle_id', [
+          '%bundle_id' => $bundle,
+        ]);
       }
     }
-#    error_log("\n");
 
     // Save the workflow now that it has all the configurations set.
     $workflow->save();
-
+    $this->logger->notice('Content Moderation Workflow created.');
   }
 
   /**
@@ -269,20 +298,26 @@ class MigrateManager {
     $state_map = $this->getModerationStateMap();
 
     // Set the new moderation state.
-#    error_log("Set content moderation state on entities:");
     foreach ($state_map as $entity_type_id => $bundles) {
       $entity_storage = $this->entityTypeManager->getStorage($entity_type_id);
       foreach ($bundles as $bundle => $entities) {
-#        error_log("    Processing bundle {$entity_type_id}:{$bundle}");
+        $this->logger->debug('Setting Content Moderation states on %bundle_id entities', [
+          '%bundle_id' => $bundle,
+        ]);
         foreach ($entities as $revision_id => $state_id) {
           $entity = $entity_storage->loadRevision($revision_id);
-#          error_log("        {$entity->id()}, revision:{$revision_id} - setting moderation_state to {$state_id}");
           $entity->moderation_state = $state_id;
           $entity->save();
+// @joe comment out these lines
+          /* Uncomment these lines for extremely verbose debugging. This is not recommended on large data sets. */
+          $this->logger->debug('Setting Workbench Moderation state field on id:%id, revision:%revision_id to %state', [
+            '%id' => $entity->id(),
+            '%revision_id' => $revision_id,
+            '%state' => $state_id,
+          ]);
         }
       }
     }
-#    error_log("\n");
 
     // @todo figure out why node entities do not let you edit the body field
 
