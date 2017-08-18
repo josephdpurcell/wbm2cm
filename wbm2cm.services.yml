@@ -2,6 +2,9 @@ services:
   wbm2cm.migrate_manager:
     class: \Drupal\wbm2cm\MigrateManager
     arguments: ['@config.factory', '@entity_type.manager', '@module_installer', '@keyvalue', '@logger.channel.wbm2cm']
+  wbm2cm.batch_manager:
+    class: \Drupal\wbm2cm\BatchManager
+    arguments: ['@wbm2cm.migrate_manager', '@keyvalue']
   logger.channel.wbm2cm:
     class: Drupal\Core\Logger\LoggerChannel
     factory: logger.factory:get

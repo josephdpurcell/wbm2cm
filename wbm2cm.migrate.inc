@@ -1,33 +1,47 @@
 <?php
 
-use Symfony\Component\HttpFoundation\RedirectResponse;
-
-function wbm2cm_gather($type, $options = array(), &$context) {
-  $migrate = \Drupal::service('wbm2cm.migrate_manager');
-
-  $migrate->step1();
-
-  $context['results'][] = $options;
-  $context['message'] = 'Completing step 1: gathering state map, uninstall WBM, install CM...';
+function wbm2cm_step1(&$context) {
+  $manager = \Drupal::service('wbm2cm.batch_manager');
+  $manager->step1($context);
 }
 
-function wbm2cm_migrate($type, $options = array(), &$context) {
-  $migrate = \Drupal::service('wbm2cm.migrate_manager');
+function wbm2cm_step2(&$context) {
+  $manager = \Drupal::service('wbm2cm.batch_manager');
+  $manager->step2($context);
+}
 
-  $migrate->step2();
+function wbm2cm_step3(&$context) {
+  $manager = \Drupal::service('wbm2cm.batch_manager');
+  $manager->step3($context);
+}
 
-  $context['results'][] = $options;
-  $context['message'] = 'Completing step 2: updating all entities with values from state map...';
+function wbm2cm_step4(&$context) {
+  $manager = \Drupal::service('wbm2cm.batch_manager');
+  $manager->step4($context);
+}
+
+function wbm2cm_step5(&$context) {
+  $manager = \Drupal::service('wbm2cm.batch_manager');
+  $manager->step5($context);
+}
+
+function wbm2cm_step6(&$context) {
+  $manager = \Drupal::service('wbm2cm.batch_manager');
+  $manager->step6($context);
+}
+
+function wbm2cm_step7(&$context) {
+  $manager = \Drupal::service('wbm2cm.batch_manager');
+  $manager->step7($context);
+}
+
+function wbm2cm_step8(&$context) {
+  $manager = \Drupal::service('wbm2cm.batch_manager');
+  $manager->step8($context);
 }
 
 function wbm2cm_migrate_finished_callback($success, $results, $operations) {
-  if ($success) {
-    $message = t('Migration complete. You can now uninstall this module.');
-  }
-  else {
-    $message = t('Finished with an error.');
-  }
-  drupal_set_message($message);
-
-  return new RedirectResponse(\Drupal::url('wbm2cm.overview', [], ['absolute' => TRUE]));
+  $manager = \Drupal::service('wbm2cm.batch_manager');
+  return $manager->finished($success, $results, $operations);
 }
+

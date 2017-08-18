@@ -11,6 +11,20 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Manages migrating from WBM to CM.
+ *
+ * The intention is for the migration to have the following recovery points:
+ *    1. States and transitions are stored in key value (i.e. the Workflow entity is created)
+ *    2. Entity state maps are stored in key value
+ *    3. WBM uninstalled
+ *    4. Workflows installed
+ *    5. CM installed
+ *    6. States and transitions are migrated (i.e. the Workflow entity is created)
+ *    7. Entity state maps are migrated
+ *    8. All keyvalue temporary state is cleaned up except for a final "hey we
+ *      migrated all the things successfully" that will get cleaned up on
+ *      uninstall of the module
+ * Each recovery checkpoint means that the batch processing is designed to
+ * either skip that step if it is complete, or re-try that step.
  */
 class MigrateManager {
 
@@ -106,27 +120,10 @@ class MigrateManager {
     // @todo return a value if it is complete
   }
 
-  // @todo use key value store
-  protected function setModerationStateMap(array $states) {
-    $this->keyValueStore->set('serialized_state_map', $states);
-  }
-
   /**
-   * Get the state map 
+   * Save the Workbench Moderation states and transitions.
    */
-  protected function getModerationStateMap() {
-    return $this->keyValueStore->get('serialized_state_map');
-  }
-
-  /**
-   * Step 1:
-   *   - Gather the moderation states and save them.
-   *   - Migrate WBM states and transitions to CM.
-   *   - Uninstall WBM.
-   */
-  public function step1() {
-    $this->entityTypeManager->clearCachedDefinitions();
-
+  public function saveWorkbenchModerationStatesAndTransitions() {
     // Collect all states.
     $states = [];
     foreach ($this->configFactory->listAll('workbench_moderation.moderation_state.') as $state_ids) {
@@ -137,6 +134,9 @@ class MigrateManager {
     $this->logger->info('Found Workbench Moderation states: %state_ids', [
       '%state_ids' => print_r($states, 1),
     ]);
+
+    // Save states.
+    $this->keyValueStore->set('states', $states);
 
     // Collect all transitions.
     $transitions = [];
@@ -149,7 +149,17 @@ class MigrateManager {
       '%transition_ids' => print_r($transitions, 1),
     ]);
 
+    // Save transitions.
+    $this->keyValueStore->set('transitions', $transitions);
+  }
+
+  /**
+   * Save the Workbench Moderation states on all entities.
+   */
+  public function saveWorkbenchModerationSateMap() {
+    // @todo avoid needing to save enabled bundles?
     // Collect all moderated bundles.
+    $this->entityTypeManager->clearCachedDefinitions();
     // @todo consider leveraging WBM to get the list of enabled bundles?
     $enabled_bundles = [];
     foreach ($this->configFactory->listAll() as $bundle_config_id) {
@@ -187,6 +197,9 @@ class MigrateManager {
       }
     }
 
+    // Save enabled bundles.
+    $this->keyValueStore->set('enabled_bundles', $enabled_bundles);
+
     // Collect entity state map and remove Workbench moderation_state field from
     // enabled bundles.
     $state_map = [];
@@ -219,23 +232,47 @@ class MigrateManager {
       }
     }
     $this->logger->notice('Workbench Moderation states have been removed from all entities and temporarily stored in key value storage.');
-    $this->setModerationStateMap($state_map);
+    $this->keyValueStore->set('state_map', $state_map);
+  }
 
+  /**
+   * Uninstall the Workbench Moderation module.
+   */
+  public function uninstallWorkbenchModeration() {
+    // @todo check if WBM is already uninstalled, if so return
     // Uninstall Workbench Moderation, but not its dependencies.
     $this->moduleInstaller->uninstall(['workbench_moderation'], FALSE);
     $this->logger->notice('Workbench Moderation module is uninstalled.');
+  }
 
-    // -----------------------------------------------------------------------------
-    // Part II. Use collected info to enable Content Moderation.
-    // -----------------------------------------------------------------------------
-
+  /**
+   * Install the Workflows module.
+   */
+  public function installWorkflows() {
+    // @todo check if workflows is already installed, if so return
     // Install Workflows module.
     // Note: this will trigger Workbench Moderation to not be "active" so that it
     // can be disabled without database integrity errors.
     $this->moduleInstaller->install(['workflows']);
     $this->logger->notice('Workflows module is installed.');
+  }
+
+  /**
+   * Install the Content Moderation module.
+   */
+  public function installContentModeration() {
+    // @todo check if content moderation is already installed, if so return
     $this->moduleInstaller->install(['content_moderation']);
     $this->logger->notice('Content Moderation module is installed.');
+  }
+
+  /**
+   * Create the Workflow based on info from WBM states and transitions.
+   */
+  public function recreateWorkbenchModerationWorkflow() {
+    $states = $this->keyValueStore->get('states');
+    $transitions = $this->keyValueStore->get('transitions');
+    $enabled_bundles = $this->keyValueStore->get('enabled_bundles');
 
     // Create and save a workflow entity with the information gathered.
     // Note: this implies all entities will be squished into a single workflow.
@@ -288,14 +325,10 @@ class MigrateManager {
   }
 
   /**
-   * Step 2: Perform the migration from WBM to CM.
-   *
-   * @return bool
-   *   True if migration succeeded. False if it failed, or further action is
-   *   required.
+   * Create the moderation states on all entities based on WBM data.
    */
-  public function step2() {
-    $state_map = $this->getModerationStateMap();
+  public function recreateModerationStatesOnEntities() {
+    $state_map = $this->keyValueStore->get('state_map');
 
     // Set the new moderation state.
     foreach ($state_map as $entity_type_id => $bundles) {
@@ -319,18 +352,7 @@ class MigrateManager {
       }
     }
 
-    // @todo figure out why node entities do not let you edit the body field
-
-    // -----------------------------------------------------------------------------
-    // Part III. Profit.
-    // -----------------------------------------------------------------------------
-    //
-    // You should now have a working Drupal that has 3 page nodes in different
-    // moderation states. Workbench Moderation should be uninstalled, and the
-    // Content Moderation and Workflows modules should be installed.
-    //
-    // Any states and transitions should now appear in the Workflows
-    // configuration.
+    // @todo figure out why /node/{id}/edit does not let you edit body field
   }
 
 }
