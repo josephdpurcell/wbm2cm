@@ -30,3 +30,9 @@ This module so far has only been tested with the [https://github.com/josephdpurc
 * Large data sets (i.e. > 1,000,000 entities)
 * Translations
 
+# Improvements
+
+* Store state map as one row per entity
+* Properly handle recovery scenarios
+* Validate the migration before beginning
+* Follow the Search API pattern for use of batch api to allow arbitrary tasks to be defined and processed
