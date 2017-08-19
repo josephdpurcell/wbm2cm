@@ -20,9 +20,7 @@ use Psr\Log\LoggerInterface;
  *    5. CM installed
  *    6. States and transitions are migrated (i.e. the Workflow entity is created)
  *    7. Entity state maps are migrated
- *    8. All keyvalue temporary state is cleaned up except for progress state.
- * Each recovery checkpoint means that the batch processing is designed to
- * either skip that step if it is complete, or re-try that step.
+ *    8. Remove all temporary data from key value used for the migration.
  */
 class MigrateManager {
 
@@ -279,6 +277,33 @@ class MigrateManager {
           ]);
           $entity->moderation_state = NULL;
           $entity->save();
+
+          // Handle translations.
+          // Get all languages except the default (which we've already handled).
+          $languages = $entity->getTranslationLanguages(FALSE);
+          $language_ids = [];
+          foreach ($languages as $language) {
+            $language_ids[] = $language->getId();
+          }
+          $this->logger->debug('Found the following translations on id:%id, revision:%revision_id: %languages', [
+            '%id' => $id,
+            '%revision_id' => $revision_id,
+            '%languages' => join(', ', $language_ids),
+          ]);
+          foreach ($language_ids as $language_id) {
+            // @todo how to get all revisions for this translation?
+            $translated_entity = $entity->getTranslation($language_id);
+            $state_map_key = "state_map.{$entity_type_id}.{$bundle_id}.{$revision_id}.{$language_id}";
+            $this->stateMapStore->set($state_map_key, $translated_entity->moderation_state->target_id);
+            $this->logger->debug('Setting Workbench Moderation state field on id:%id, revision:%revision_id, lang:%lang from %state to NULL', [
+                '%id' => $id,
+                '%revision_id' => $revision_id,
+                '%lang' => $language_id,
+                '%state' => $entity->moderation_state->target_id,
+            ]);
+            $translated_entity->moderation_state = NULL;
+            $translated_entity->save();
+          }
         }
       }
     }
@@ -424,6 +449,43 @@ class MigrateManager {
           // Remove the state from key value store to indicate the entity has
           // been successfully updated.
           $this->stateMapStore->delete($state_map_key);
+
+          // Handle translations.
+          // Get all languages except the default (which we've already handled).
+          $languages = $entity->getTranslationLanguages(FALSE);
+          $language_ids = [];
+          foreach ($languages as $language) {
+            $language_ids[] = $language->getId();
+          }
+          foreach ($language_ids as $language_id) {
+            // Get the state if it exists.
+            // @todo how to get all revisions for this translation?
+            $translated_entity = $entity->getTranslation($language_id);
+            $state_map_key = "state_map.{$entity_type_id}.{$bundle_id}.{$revision_id}.{$language_id}";
+            $state_id = $this->stateMapStore->get($state_map_key);
+            if (!$state_id) {
+              $this->logger->debug('Skipping updating state on id:%id, revision:%revision_id, lang:%lang because no state exists', [
+                  '%id' => $translated_entity->id(),
+                  '%revision_id' => $revision_id,
+                  '%lang' => $language_id,
+                  '%state' => $state_id,
+              ]);
+              continue;
+            }
+
+            // Set the state.
+            $translated_entity->moderation_state = $state_id;
+            $translated_entity->save();
+            $this->logger->debug('Setting Workbench Moderation state field on id:%id, revision:%revision_id to %state', [
+                '%id' => $translated_entity->id(),
+                '%revision_id' => $revision_id,
+                '%state' => $state_id,
+            ]);
+
+            // Remove the state from key value store to indicate the entity has
+            // been successfully updated.
+            $this->stateMapStore->delete($state_map_key);
+          }
         }
       }
     }
