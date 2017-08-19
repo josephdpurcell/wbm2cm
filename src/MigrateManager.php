@@ -89,8 +89,8 @@ class MigrateManager {
     $this->configFactory = $config_factory;
     $this->entityTypeManager = $entity_type_manager;
     $this->moduleInstaller = $module_installer;
-    $this->wbm2cmStore = $key_value_factory->get('wbm2cm');
-    $this->stateMapStore = $key_value_factory->get('wbm2cm_state_map');
+    $this->migrateStore = $key_value_factory->get('wbm2cm_migrate');
+    $this->stateMapStore = $key_value_factory->get('wbm2cm_migrate_state_map');
     $this->logger = $logger;
   }
 
@@ -123,14 +123,14 @@ class MigrateManager {
    * Flags that the migration finished.
    */
   public function setFinished() {
-    $this->wbm2cmStore->set('finished', TRUE);
+    $this->migrateStore->set('finished', TRUE);
   }
 
   /**
    * Flags that the migration is not finished.
    */
   public function setUnfinished() {
-    $this->wbm2cmStore->set('finished', FALSE);
+    $this->migrateStore->set('finished', FALSE);
   }
 
   /**
@@ -142,7 +142,7 @@ class MigrateManager {
    *   True if the full migration is considered to have been run; else, false.
    */
   public function isFinished() {
-    return TRUE == $this->wbm2cmStore->get('finished');
+    return TRUE == $this->migrateStore->get('finished');
   }
 
   /**
@@ -191,7 +191,7 @@ class MigrateManager {
     ]);
 
     // Save states.
-    $this->wbm2cmStore->set('states', $states);
+    $this->migrateStore->set('states', $states);
 
     // Collect all transitions.
     $transitions = [];
@@ -205,7 +205,7 @@ class MigrateManager {
     ]);
 
     // Save transitions.
-    $this->wbm2cmStore->set('transitions', $transitions);
+    $this->migrateStore->set('transitions', $transitions);
   }
 
   /**
@@ -253,7 +253,7 @@ class MigrateManager {
     }
 
     // Save enabled bundles.
-    $this->wbm2cmStore->set('enabled_bundles', $enabled_bundles);
+    $this->migrateStore->set('enabled_bundles', $enabled_bundles);
 
     // Collect entity state map and remove Workbench moderation_state field from
     // enabled bundles.
@@ -322,9 +322,9 @@ class MigrateManager {
    * Create the Workflow based on info from WBM states and transitions.
    */
   public function recreateWorkbenchModerationWorkflow() {
-    $states = $this->wbm2cmStore->get('states');
-    $transitions = $this->wbm2cmStore->get('transitions');
-    $enabled_bundles = $this->wbm2cmStore->get('enabled_bundles');
+    $states = $this->migrateStore->get('states');
+    $transitions = $this->migrateStore->get('transitions');
+    $enabled_bundles = $this->migrateStore->get('enabled_bundles');
 
     // Create and save a workflow entity with the information gathered.
     // Note: this implies all entities will be squished into a single workflow.
@@ -379,7 +379,7 @@ class MigrateManager {
    * Create the moderation states on all entities based on WBM data.
    */
   public function recreateModerationStatesOnEntities() {
-    $enabled_bundles = $this->wbm2cmStore->get('enabled_bundles');
+    $enabled_bundles = $this->migrateStore->get('enabled_bundles');
 
     foreach ($enabled_bundles as $entity_type_id=> $bundles) {
       $entity_storage = $this->entityTypeManager->getStorage($entity_type_id);
@@ -437,7 +437,17 @@ class MigrateManager {
    *   - The state map keys, which should be cleaned up during processing.
    */
   public function cleanupKeyValue() {
-    $this->wbm2cmStore->deleteMultiple(['states', 'transitions', 'enabled_bundles']);
+    $this->migrateStore->deleteMultiple(['states', 'transitions', 'enabled_bundles']);
+  }
+
+  /**
+   * Purge all key value stores used used by the migrate manager.
+   *
+   * Note: this should only be used during the module's uninstall.
+   */
+  public function purgeAllKeyValueStores() {
+    $this->migrateStore->deleteAll();
+    $this->stateMapStore->deleteAll();
   }
 
 }

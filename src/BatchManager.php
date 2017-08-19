@@ -41,7 +41,7 @@ class BatchManager {
    */
   public function __construct(MigrateManager $manager, KeyValueFactoryInterface $key_value_factory) {
     $this->manager = $manager;
-    $this->keyValueStore = $key_value_factory->get('wbm2cm');
+    $this->batchStore = $key_value_factory->get('wbm2cm_batch');
   }
 
   /**
@@ -54,8 +54,8 @@ class BatchManager {
    *   True if complete and no action needs taken, else false.
    */
   public function isStepComplete($step) {
-    if ($this->keyValueStore->has($step)) {
-      return 'complete' == $this->keyValueStore->get($step);
+    if ($this->batchStore->has($step)) {
+      return 'complete' == $this->batchStore->get($step);
     }
     return FALSE;
   }
@@ -67,7 +67,7 @@ class BatchManager {
    *   The name of the step, e.g. "step1".
    */
   public function setStepComplete($step) {
-    $this->keyValueStore->set($step, 'complete');
+    $this->batchStore->set($step, 'complete');
   }
 
   /**
@@ -77,7 +77,7 @@ class BatchManager {
    *   The name of the step, e.g. "step1".
    */
   public function setStepIncomplete($step) {
-    $this->keyValueStore->set($step, 'incomplete');
+    $this->batchStore->set($step, 'incomplete');
   }
 
   /**
@@ -226,6 +226,15 @@ class BatchManager {
     drupal_set_message($message);
 
     return new RedirectResponse(\Drupal::url('wbm2cm.overview', [], ['absolute' => TRUE]));
+  }
+
+  /**
+   * Purge all key value stores used by the batch manager.
+   *
+   * Note: this should only be used during the module's uninstall.
+   */
+  public function purgeAllKeyValueStores() {
+    $this->batchStore->deleteAll();
   }
 
 }

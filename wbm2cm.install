@@ -1,0 +1,14 @@
+<?php
+
+/**
+ * Implements hook_uninstall().
+ */
+function wbm2cm_uninstall() {
+  $migrate_manager = \Drupal::service('wbm2cm.migrate_manager');
+  $batch_manager = \Drupal::service('wbm2cm.batch_manager');
+
+  // Clear out key value storage.
+  $migrate_manager->purgeAllKeyValueStores();
+  $batch_manager->purgeAllKeyValueStores();
+}
+

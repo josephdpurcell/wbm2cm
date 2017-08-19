@@ -70,6 +70,7 @@ class MigrateForm extends FormBase {
     $form['info'] = array(
       '#type' => 'html_tag',
       '#tag' => 'div',
+      // @todo link the the uninstall page
       '#value' => 'The migration is complete! You may now uninstall this module.',
     );
     return $form;
@@ -90,6 +91,7 @@ class MigrateForm extends FormBase {
     $form['info'] = array(
       '#type' => 'html_tag',
       '#tag' => 'div',
+      // @todo turn the URL into a link
       '#value' => 'This migration is experimental and is designed for Drupal 8.4 alpha, migrating from Workbench Moderation to Content Moderation. There are known issues and many untested scenarios. For more details, see https://www.drupal.org/node/2897870.',
     );
     $form['actions']['#type'] = 'actions';
