@@ -3,6 +3,7 @@
 namespace Drupal\wbm2cm;
 
 use Drupal\Core\KeyValueStore\KeyValueFactoryInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 
 /**
@@ -32,16 +33,26 @@ class BatchManager {
   protected $keyValueStore;
 
   /**
+   * Logger service.
+   *
+   * @var \Drupal\Core\Logger\LoggerChannelInterface
+   */
+  protected $logger;
+
+  /**
    * Instantiate BatchManager.
    *
    * @param \Drupal\wbm2cm\MigrateManager $manager
    *   The migration manager.
    * @param \Drupal\Core\KeyValueStore\KeyValueFactoryInterface $key_value_factory
    *   The key value store factory.
+   * @param \Psr\Log\LoggerInterface $logger
+   *   A logger instance.
    */
-  public function __construct(MigrateManager $manager, KeyValueFactoryInterface $key_value_factory) {
+  public function __construct(MigrateManager $manager, KeyValueFactoryInterface $key_value_factory, LoggerInterface $logger) {
     $this->manager = $manager;
     $this->batchStore = $key_value_factory->get('wbm2cm_batch');
+    $this->logger = $logger;
   }
 
   /**
@@ -105,11 +116,22 @@ class BatchManager {
    */
   public function isStepSkipped($step) {
     if ($this->isProcessingStopped()) {
+      $this->logger->info('Step %step is skipped because: %reason', [
+        '%step' => $step,
+        '%reason' => 'Processing is stopped',
+      ]);
       return TRUE;
     }
     if ($this->isStepComplete($step)) {
+      $this->logger->info('Step %step is skipped because: %reason', [
+        '%step' => $step,
+        '%reason' => 'Step is complete',
+      ]);
       return TRUE;
     }
+    $this->logger->info('Step %step is NOT skipped', [
+      '%step' => $step,
+    ]);
     return FALSE;
   }
 
