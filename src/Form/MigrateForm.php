@@ -46,13 +46,51 @@ class MigrateForm extends FormBase {
    * {@inheritdoc}
    */
   public function buildForm(array $form, FormStateInterface $form_state) {
-    // @todo add logic for when the migration is complete to not allow submission
+    $is_complete = $this->migrate->isComplete();
+    if ($is_complete) {
+      return $this->buildFormForComplete($form, $form_state);
+    }
+    else {
+      return $this->buildFormForIncomplete($form, $form_state);
+    }
+  }
+
+  /**
+   * Build the form for when the migration is complete.
+   *
+   * @param array $form
+   *   An associative array containing the structure of the form.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The current state of the form.
+   *
+   * @return array
+   *   The form structure.
+   */
+  protected function buildFormForComplete(array $form, FormStateInterface $form_state) {
     $form['info'] = array(
       '#type' => 'html_tag',
       '#tag' => 'div',
-      // @todo write a message
-      // @todo is there a need for anything configurable?
-      '#value' => 'Some introductory text that explains what is going to happen and some guarantees of what will happen on failure.',
+      '#value' => 'The migration is complete! You may now uninstall this module.',
+    );
+    return $form;
+  }
+
+  /**
+   * Build the form for when the migration is NOT complete.
+   *
+   * @param array $form
+   *   An associative array containing the structure of the form.
+   * @param \Drupal\Core\Form\FormStateInterface $form_state
+   *   The current state of the form.
+   *
+   * @return array
+   *   The form structure.
+   */
+  protected function buildFormForIncomplete(array $form, FormStateInterface $form_state) {
+    $form['info'] = array(
+      '#type' => 'html_tag',
+      '#tag' => 'div',
+      '#value' => 'This migration is experimental and is designed for Drupal 8.4 alpha, migrating from Workbench Moderation to Content Moderation. There are known issues and many untested scenarios. For more details, see https://www.drupal.org/node/2897870.',
     );
     $form['actions']['#type'] = 'actions';
     $form['actions']['submit'] = array(

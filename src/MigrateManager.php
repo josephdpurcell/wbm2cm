@@ -20,9 +20,7 @@ use Psr\Log\LoggerInterface;
  *    5. CM installed
  *    6. States and transitions are migrated (i.e. the Workflow entity is created)
  *    7. Entity state maps are migrated
- *    8. All keyvalue temporary state is cleaned up except for a final "hey we
- *      migrated all the things successfully" that will get cleaned up on
- *      uninstall of the module
+ *    8. All keyvalue temporary state is cleaned up except for progress state.
  * Each recovery checkpoint means that the batch processing is designed to
  * either skip that step if it is complete, or re-try that step.
  */
@@ -54,7 +52,17 @@ class MigrateManager {
    *
    * @var \Drupal\Core\KeyValueStore\KeyValueStoreInterface
    */
-  protected $keyValueStore;
+  protected $wbm2cmStore;
+
+  /**
+   * The key value store for the state map data.
+   *
+   * Note: we store state map data separately to make it easier to compute if
+   * all states were successfully migrated.
+   *
+   * @var \Drupal\Core\KeyValueStore\KeyValueStoreInterface
+   */
+  protected $stateMapStore;
 
   /**
    * Logger service.
@@ -81,7 +89,8 @@ class MigrateManager {
     $this->configFactory = $config_factory;
     $this->entityTypeManager = $entity_type_manager;
     $this->moduleInstaller = $module_installer;
-    $this->keyValueStore = $key_value_factory->get('wbm2cm');
+    $this->wbm2cmStore = $key_value_factory->get('wbm2cm');
+    $this->stateMapStore = $key_value_factory->get('wbm2cm_state_map');
     $this->logger = $logger;
   }
 
@@ -111,13 +120,59 @@ class MigrateManager {
   }
 
   /**
+   * Flags that the migration finished.
+   */
+  public function setFinished() {
+    $this->wbm2cmStore->set('finished', TRUE);
+  }
+
+  /**
+   * Flags that the migration is not finished.
+   */
+  public function setUnfinished() {
+    $this->wbm2cmStore->set('finished', FALSE);
+  }
+
+  /**
+   * Determines if the migration finished.
+   *
+   * @see isComplete
+   *
+   * @return bool
+   *   True if the full migration is considered to have been run; else, false.
+   */
+  public function isFinished() {
+    return TRUE == $this->wbm2cmStore->get('finished');
+  }
+
+  /**
    * Determine if the migration is complete.
+   *
+   * The migration is complete if:
+   *   - It is marked as finished
+   *   - There are no states left in the state key value store
    *
    * @return bool
    *   True if the migration completed successfully. Otherwise, false.
    */
   public function isComplete() {
-    // @todo return a value if it is complete
+    if ($this->isFinished()) {
+      // @todo is there a less costly way to compute that the key value storage is empty?
+      $states = $this->stateMapStore->getAll();
+      if (empty($states)) {
+        $this->logger->debug('isComplete was called, it isFinished, and there are NO states remaining in storage.');
+        return TRUE;
+      }
+      else {
+        $this->logger->debug('isComplete was called, it isFinished, but there are %count states remaining in storage.', [
+          '%count' => count($states),
+        ]);
+        return FALSE;
+      }
+    }
+
+    $this->logger->debug('isComplete was called and returned FALSE.');
+    return FALSE;
   }
 
   /**
@@ -136,7 +191,7 @@ class MigrateManager {
     ]);
 
     // Save states.
-    $this->keyValueStore->set('states', $states);
+    $this->wbm2cmStore->set('states', $states);
 
     // Collect all transitions.
     $transitions = [];
@@ -150,7 +205,7 @@ class MigrateManager {
     ]);
 
     // Save transitions.
-    $this->keyValueStore->set('transitions', $transitions);
+    $this->wbm2cmStore->set('transitions', $transitions);
   }
 
   /**
@@ -198,7 +253,7 @@ class MigrateManager {
     }
 
     // Save enabled bundles.
-    $this->keyValueStore->set('enabled_bundles', $enabled_bundles);
+    $this->wbm2cmStore->set('enabled_bundles', $enabled_bundles);
 
     // Collect entity state map and remove Workbench moderation_state field from
     // enabled bundles.
@@ -216,7 +271,7 @@ class MigrateManager {
         foreach ($entity_revisions as $revision_id => $id) {
           $entity = $entity_storage->loadRevision($revision_id);
           $state_map_key = "state_map.{$entity_type_id}.{$bundle_id}.{$revision_id}";
-          $this->keyValueStore->set($state_map_key, $entity->moderation_state->target_id);
+          $this->stateMapStore->set($state_map_key, $entity->moderation_state->target_id);
           $this->logger->debug('Setting Workbench Moderation state field on id:%id, revision:%revision_id from %state to NULL', [
             '%id' => $id,
             '%revision_id' => $revision_id,
@@ -267,9 +322,9 @@ class MigrateManager {
    * Create the Workflow based on info from WBM states and transitions.
    */
   public function recreateWorkbenchModerationWorkflow() {
-    $states = $this->keyValueStore->get('states');
-    $transitions = $this->keyValueStore->get('transitions');
-    $enabled_bundles = $this->keyValueStore->get('enabled_bundles');
+    $states = $this->wbm2cmStore->get('states');
+    $transitions = $this->wbm2cmStore->get('transitions');
+    $enabled_bundles = $this->wbm2cmStore->get('enabled_bundles');
 
     // Create and save a workflow entity with the information gathered.
     // Note: this implies all entities will be squished into a single workflow.
@@ -324,7 +379,7 @@ class MigrateManager {
    * Create the moderation states on all entities based on WBM data.
    */
   public function recreateModerationStatesOnEntities() {
-    $enabled_bundles = $this->keyValueStore->get('enabled_bundles');
+    $enabled_bundles = $this->wbm2cmStore->get('enabled_bundles');
 
     foreach ($enabled_bundles as $entity_type_id=> $bundles) {
       $entity_storage = $this->entityTypeManager->getStorage($entity_type_id);
@@ -346,7 +401,7 @@ class MigrateManager {
         foreach ($entity_revisions as $revision_id => $id) {
           // Get the state if it exists.
           $state_map_key = "state_map.{$entity_type_id}.{$bundle_id}.{$revision_id}";
-          $state_id = $this->keyValueStore->get($state_map_key);
+          $state_id = $this->stateMapStore->get($state_map_key);
           if (!$state_id) {
             $this->logger->debug('Skipping updating state on id:%id, revision:%revision_id because no state exists', [
               '%id' => $entity->id(),
@@ -368,10 +423,21 @@ class MigrateManager {
 
           // Remove the state from key value store to indicate the entity has
           // been successfully updated.
-          $this->keyValueStore->delete($state_map_key);
+          $this->stateMapStore->delete($state_map_key);
         }
       }
     }
+  }
+
+  /**
+   * Remove all temporary data from key value used for the migration.
+   *
+   * The following are not cleaned up by this:
+   *   - Any state used to manage progress of the migration, e.g. BatchManager.
+   *   - The state map keys, which should be cleaned up during processing.
+   */
+  public function cleanupKeyValue() {
+    $this->wbm2cmStore->deleteMultiple(['states', 'transitions', 'enabled_bundles']);
   }
 
 }

@@ -197,15 +197,18 @@ class BatchManager {
   }
 
   /**
-   * All keyvalue temporary state is cleaned up except for a final "hey we
-   * migrated all the things successfully" that will get cleaned up on
-   * uninstall of the module.
+   * All keyvalue temporary state is cleaned up except for progress state.
    */
   public function step8(&$context) {
     if ($this->isStepSkipped('step8')) {
       return;
     }
-    sleep(1);
+    $this->manager->cleanupKeyValue();
+    $this->setStepComplete('step8');
+
+    // This is the last step, so set the migration as finished.
+    $this->manager->setFinished();
+
     $context['message'] = 'Clean up key value storage.';
   }
 
