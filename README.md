@@ -36,3 +36,7 @@ This module so far has only been tested with the [https://github.com/josephdpurc
 * Properly handle recovery scenarios
 * Validate the migration before beginning
 * Follow the Search API pattern for use of batch api to allow arbitrary tasks to be defined and processed
+
+# Known Bugs
+
+* When using this module with the [https://github.com/josephdpurcell/drupal8_wbm2cm_concept-project](drupal8_wbm2cm_concept) install profile the body field is not visible at /node/{id}/edit. At present, it's unclear whether that is an issue with the migration, the install profile, or something else.
