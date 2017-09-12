@@ -3,7 +3,6 @@
 namespace Drupal\wbm2cm\Controller;
 
 use Drupal\Core\DependencyInjection\ContainerInjectionInterface;
-use Drupal\Core\Url;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -16,7 +15,7 @@ class MigrateBatchController implements ContainerInjectionInterface {
    *
    * @var \Drupal\wbm2cm\BatchManager
    */
-  protected $batch_manager;
+  protected $batchManager;
 
   /**
    * Instantiate the migrate batch controller.
@@ -24,7 +23,7 @@ class MigrateBatchController implements ContainerInjectionInterface {
    * @param \Drupal\wbm2cm\BatchManager $batch_manager
    *   The batch manager for the migration.
    */
-  public function __construct($batch_manager) {
+  public function __construct(BatchManager $batch_manager) {
     $this->batchManager = $batch_manager;
   }
 
@@ -41,10 +40,6 @@ class MigrateBatchController implements ContainerInjectionInterface {
    * Set the batch tasks and trigger batch process.
    */
   public function migrate() {
-    /* @todo figure out how we can use the search api example, see TaskController
-    $this->batchManager->setTasks();
-    return batch_process(Url::fromRoute('wbm2cm.overview'));
-    */
     $batch = [
       'title' => t('Migrating WBM to CM'),
       'operations' => [

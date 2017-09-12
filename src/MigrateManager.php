@@ -147,8 +147,8 @@ class MigrateManager {
    * Determine if the migration is complete.
    *
    * The migration is complete if:
-   *   - It is marked as finished
-   *   - There are no states left in the state key value store
+   *   - It is marked as finished.
+   *   - There are no states left in the state key value store.
    *
    * @return bool
    *   True if the migration completed successfully. Otherwise, false.
@@ -255,7 +255,7 @@ class MigrateManager {
 
     // Collect entity state map and remove Workbench moderation_state field from
     // enabled bundles.
-    foreach ($enabled_bundles as $entity_type_id=> $bundles) {
+    foreach ($enabled_bundles as $entity_type_id => $bundles) {
       $entity_storage = $this->entityTypeManager->getStorage($entity_type_id);
       foreach ($bundles as $bundle_id) {
         $this->logger->debug('Querying for all %bundle_id revisions...', [
@@ -288,7 +288,7 @@ class MigrateManager {
           $this->logger->debug('Found the following translations on id:%id, revision:%revision_id: %languages', [
             '%id' => $id,
             '%revision_id' => $revision_id,
-            '%languages' => join(', ', $language_ids),
+            '%languages' => implode(', ', $language_ids),
           ]);
           foreach ($language_ids as $language_id) {
             // @todo how to get all revisions for this translation?
@@ -296,10 +296,10 @@ class MigrateManager {
             $state_map_key = "state_map.{$entity_type_id}.{$bundle_id}.{$revision_id}.{$language_id}";
             $this->stateMapStore->set($state_map_key, $translated_entity->moderation_state->target_id);
             $this->logger->debug('Setting Workbench Moderation state field on id:%id, revision:%revision_id, lang:%lang from %state to NULL', [
-                '%id' => $id,
-                '%revision_id' => $revision_id,
-                '%lang' => $language_id,
-                '%state' => $entity->moderation_state->target_id,
+              '%id' => $id,
+              '%revision_id' => $revision_id,
+              '%lang' => $language_id,
+              '%state' => $entity->moderation_state->target_id,
             ]);
             $translated_entity->moderation_state = NULL;
             $translated_entity->save();
@@ -385,10 +385,11 @@ class MigrateManager {
     $workflow = new Workflow($workflow_config, 'workflow');
     $workflow_type_plugin = $workflow->getTypePlugin();
 
-    // Add Content Moderation moderation to bundles that were Workbench Moderation moderated.
-    foreach ($enabled_bundles as $entity_type_id=> $bundles) {
+    // Add Content Moderation moderation to bundles that were Workbench
+    // Moderation moderated.
+    foreach ($enabled_bundles as $entity_type_id => $bundles) {
       foreach ($bundles as $bundle_id) {
-        $workflow->getTypePlugin()->addEntityTypeAndBundle($entity_type_id, $bundle_id);
+        $workflow_type_plugin->addEntityTypeAndBundle($entity_type_id, $bundle_id);
         $this->logger->notice('Setting Content Moderation to be enabled on %bundle_id', [
           '%bundle_id' => $bundle_id,
         ]);
@@ -406,7 +407,7 @@ class MigrateManager {
   public function recreateModerationStatesOnEntities() {
     $enabled_bundles = $this->migrateStore->get('enabled_bundles');
 
-    foreach ($enabled_bundles as $entity_type_id=> $bundles) {
+    foreach ($enabled_bundles as $entity_type_id => $bundles) {
       $entity_storage = $this->entityTypeManager->getStorage($entity_type_id);
 
       foreach ($bundles as $bundle_id) {
@@ -465,10 +466,10 @@ class MigrateManager {
             $state_id = $this->stateMapStore->get($state_map_key);
             if (!$state_id) {
               $this->logger->debug('Skipping updating state on id:%id, revision:%revision_id, lang:%lang because no state exists', [
-                  '%id' => $translated_entity->id(),
-                  '%revision_id' => $revision_id,
-                  '%lang' => $language_id,
-                  '%state' => $state_id,
+                '%id' => $translated_entity->id(),
+                '%revision_id' => $revision_id,
+                '%lang' => $language_id,
+                '%state' => $state_id,
               ]);
               continue;
             }
@@ -477,9 +478,9 @@ class MigrateManager {
             $translated_entity->moderation_state = $state_id;
             $translated_entity->save();
             $this->logger->debug('Setting Workbench Moderation state field on id:%id, revision:%revision_id to %state', [
-                '%id' => $translated_entity->id(),
-                '%revision_id' => $revision_id,
-                '%state' => $state_id,
+              '%id' => $translated_entity->id(),
+              '%revision_id' => $revision_id,
+              '%state' => $state_id,
             ]);
 
             // Remove the state from key value store to indicate the entity has
@@ -499,7 +500,11 @@ class MigrateManager {
    *   - The state map keys, which should be cleaned up during processing.
    */
   public function cleanupKeyValue() {
-    $this->migrateStore->deleteMultiple(['states', 'transitions', 'enabled_bundles']);
+    $this->migrateStore->deleteMultiple([
+      'states',
+      'transitions',
+      'enabled_bundles',
+    ]);
   }
 
   /**
