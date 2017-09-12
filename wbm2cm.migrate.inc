@@ -1,5 +1,10 @@
 <?php
 
+/**
+ * @file
+ * Provides batch processing hooks.
+ */
+
 function wbm2cm_step1(&$context) {
   $manager = \Drupal::service('wbm2cm.batch_manager');
   $manager->step1($context);

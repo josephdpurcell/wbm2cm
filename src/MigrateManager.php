@@ -41,7 +41,7 @@ class MigrateManager {
   /**
    * The module installer.
    *
-   * @var \Drupal\Core\Extension\ModuleInstallerInterface $module_installer
+   * @var \Drupal\Core\Extension\ModuleInstallerInterface
    */
   protected $moduleInstaller;
 

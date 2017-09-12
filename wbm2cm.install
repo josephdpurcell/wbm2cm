@@ -1,6 +1,11 @@
 <?php
 
 /**
+ * @file
+ * Provides hooks to integration the module with Drupal.
+ */
+
+/**
  * Implements hook_uninstall().
  */
 function wbm2cm_uninstall() {
@@ -11,4 +16,3 @@ function wbm2cm_uninstall() {
   $migrate_manager->purgeAllKeyValueStores();
   $batch_manager->purgeAllKeyValueStores();
 }
-
